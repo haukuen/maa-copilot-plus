@@ -10,7 +10,7 @@ export default defineConfig({
         name: 'MaaCopilotPlus',
         namespace: 'https://github.com/HauKuen',
         homepage: 'https://github.com/haukuen/maa-copilot-plus',
-        version: '2.0.1',
+        version: '2.1.0',
         description: '增强MAA作业站的筛选功能',
         author: 'haukuen',
         icon: 'https://zoot.plus/favicon-32x32.png?v=1',
@@ -21,6 +21,7 @@ export default defineConfig({
         grant: [
           'GM_setValue',
           'GM_getValue',
+          'unsafeWindow',
         ],
         'run-at': 'document-start',
         license: 'MIT',

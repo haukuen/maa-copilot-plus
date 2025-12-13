@@ -1,13 +1,14 @@
-import { GM_getValue, GM_setValue } from "$";
+import { GM_getValue, GM_setValue, unsafeWindow } from "$";
 
 // 必须最早拦截
 const COPILOT_QUERY_URL = "prts.maa.plus/copilot/query";
 
-const _originalFetch = window.fetch.bind(window);
-const _originalXHROpen = XMLHttpRequest.prototype.open;
-const _originalXHRSend = XMLHttpRequest.prototype.send;
+const pageWindow = unsafeWindow || window;
+const _originalFetch = pageWindow.fetch.bind(pageWindow);
+const _originalXHROpen = pageWindow.XMLHttpRequest.prototype.open;
+const _originalXHRSend = pageWindow.XMLHttpRequest.prototype.send;
 
-window.fetch = async function (
+pageWindow.fetch = async function (
   input: RequestInfo | URL,
   init?: RequestInit
 ): Promise<Response> {
@@ -34,7 +35,7 @@ window.fetch = async function (
   return response;
 };
 
-XMLHttpRequest.prototype.open = function (
+pageWindow.XMLHttpRequest.prototype.open = function (
   method: string,
   url: string | URL,
   ...args: any[]
@@ -46,7 +47,7 @@ XMLHttpRequest.prototype.open = function (
   return _originalXHROpen.apply(this, [method, url, ...args] as any);
 };
 
-XMLHttpRequest.prototype.send = function (
+pageWindow.XMLHttpRequest.prototype.send = function (
   body?: Document | XMLHttpRequestBodyInit | null
 ) {
   if ((this as any)._isCopilotQuery) {
@@ -192,28 +193,6 @@ declare global {
 }
 
 // ============ UI ============
-
-function safeQuerySelector(
-  selector: string,
-  parent: Element | Document = document
-): HTMLElement | null {
-  try {
-    return parent.querySelector(selector) as HTMLElement;
-  } catch {
-    return null;
-  }
-}
-
-function safeQuerySelectorAll(
-  selector: string,
-  parent: Element | Document = document
-): NodeListOf<HTMLElement> {
-  try {
-    return parent.querySelectorAll(selector);
-  } catch {
-    return document.querySelectorAll("nothing");
-  }
-}
 
 function createUI() {
   const controlPanel = document.createElement("div");
@@ -469,43 +448,14 @@ function openImportDialog() {
   document.body.appendChild(modal);
 }
 
-// ============ 广告移除 ============
-
-let lastUrl = location.href;
-
-const observer = new MutationObserver(() => {
-  if (lastUrl !== location.href) lastUrl = location.href;
-  removeAds();
-});
-
-const removeAds = () => {
-  const sideAd = safeQuerySelector(
-    "body > main > div > div:nth-child(2) > div > div:nth-child(2) > div > a"
-  );
-  if (sideAd) sideAd.style.display = "none";
-
-  [
-    'a[href*="gad.netease.com"]',
-    'a[href*="ldmnq.com"]',
-    'a[href*="ldy/ldymuban"]',
-    'a[class*="block relative"]',
-  ].forEach((sel) =>
-    safeQuerySelectorAll(sel).forEach((ad) => (ad.style.display = "none"))
-  );
-};
-
 // ============ 初始化 ============
 
 function initUI() {
   if (document.body) {
-    observer.observe(document.body, { childList: true, subtree: true });
     createUI();
-    removeAds();
   } else {
     document.addEventListener("DOMContentLoaded", () => {
-      observer.observe(document.body, { childList: true, subtree: true });
       createUI();
-      removeAds();
     });
   }
 }
