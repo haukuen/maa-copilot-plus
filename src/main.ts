@@ -178,7 +178,7 @@ function filterResponse(response: CopilotQueryResponse): CopilotQueryResponse {
   const filteredData = originalData.filter(
     (item) => checkCopilotItem(item).pass
   );
-  lastFilteredCount = originalData.length - filteredData.length;
+  lastFilteredCount += originalData.length - filteredData.length;
 
   setTimeout(() => updateStatus(lastFilteredCount), 100);
 
