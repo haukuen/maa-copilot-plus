@@ -285,10 +285,10 @@ function injectToNavbar() {
 
   // 导入按钮
   const importBtn = createNavButton(
-    "导入角色",
+    "导入干员",
     false,
     openImportDialog,
-    "导入角色列表"
+    "导入干员列表"
   );
 
   // 状态显示
@@ -311,7 +311,7 @@ function updateNavStatus() {
   const status = document.getElementById("maa-status");
   if (!status) return;
 
-  let text = `${myOperators.length}个角色`;
+  let text = `${myOperators.length}个干员`;
   status.textContent = text;
 }
 
@@ -355,7 +355,7 @@ function openImportDialog() {
 
   const title = document.createElement("h3");
   title.className = "bp4-heading";
-  title.textContent = "导入角色列表";
+  title.textContent = "导入干员列表";
   title.style.marginTop = "0";
 
   const textarea = document.createElement("textarea");
@@ -366,7 +366,7 @@ function openImportDialog() {
     marginBottom: "10px",
     resize: "vertical",
   });
-  textarea.placeholder = "粘贴角色列表 JSON 数据...";
+  textarea.placeholder = "粘贴干员列表 JSON 数据...";
   textarea.value = JSON.stringify(myOperators, null, 2);
 
   const buttonContainer = document.createElement("div");
@@ -404,7 +404,7 @@ function openImportDialog() {
       GM_setValue("myOperators", myOperators);
       updateStatus();
       document.body.removeChild(modal);
-      if (confirm("角色列表已导入，需要刷新页面才能生效。是否立即刷新？"))
+      if (confirm("干员列表已导入，需要刷新页面才能生效。是否立即刷新？"))
         location.reload();
     } catch (e: any) {
       alert("解析失败: " + e.message);
