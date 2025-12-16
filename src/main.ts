@@ -131,7 +131,6 @@ interface CopilotQueryResponse {
 let myOperators: Operator[] = GM_getValue("myOperators", []);
 let filterEnabled = GM_getValue("filterEnabled", true);
 let allowOneMissing = GM_getValue("allowOneMissing", false);
-let lastFilteredCount = 0;
 
 // ============ 筛选逻辑 ============
 
@@ -178,9 +177,7 @@ function filterResponse(response: CopilotQueryResponse): CopilotQueryResponse {
   const filteredData = originalData.filter(
     (item) => checkCopilotItem(item).pass
   );
-  lastFilteredCount += originalData.length - filteredData.length;
-
-  setTimeout(() => updateStatus(lastFilteredCount), 100);
+  setTimeout(() => updateStatus(), 100);
 
   return { ...response, data: { ...response.data, data: filteredData } };
 }
@@ -194,174 +191,133 @@ declare global {
 
 // ============ UI ============
 
-function createUI() {
-  const controlPanel = document.createElement("div");
-  controlPanel.id = "maa-copilot-plus";
-  Object.assign(controlPanel.style, {
-    position: "fixed",
-    top: "10px",
-    right: "10px",
-    zIndex: "9999",
-    backgroundColor: "#f0f0f0",
-    padding: "10px",
-    borderRadius: "5px",
-    boxShadow: "0 0 10px rgba(0,0,0,0.2)",
-    cursor: "move",
-  });
+// 创建导航栏按钮
+function createNavButton(
+  text: string,
+  isActive: boolean,
+  onClick: () => void,
+  title?: string
+): HTMLButtonElement {
+  const btn = document.createElement("button");
+  // 使用这个网站原生的 bp4 样式
+  btn.className = `bp4-button bp4-minimal ${isActive ? "bp4-active" : ""}`;
+  btn.type = "button";
 
-  // 拖拽
-  let isDragging = false,
-    initialX = 0,
-    initialY = 0;
+  const span = document.createElement("span");
+  span.className = "bp4-button-text";
+  span.textContent = text;
+  btn.appendChild(span);
 
-  controlPanel.addEventListener("mousedown", (e) => {
-    isDragging = true;
-    initialX = e.clientX - controlPanel.offsetLeft;
-    initialY = e.clientY - controlPanel.offsetTop;
-    controlPanel.style.opacity = "0.8";
-    controlPanel.style.transition = "none";
-  });
+  btn.onclick = onClick;
+  if (title) btn.title = title;
 
-  document.addEventListener("mousemove", (e) => {
-    if (!isDragging) return;
-    e.preventDefault();
-    const maxX = window.innerWidth - controlPanel.offsetWidth;
-    const maxY = window.innerHeight - controlPanel.offsetHeight;
-    controlPanel.style.left =
-      Math.max(0, Math.min(e.clientX - initialX, maxX)) + "px";
-    controlPanel.style.top =
-      Math.max(0, Math.min(e.clientY - initialY, maxY)) + "px";
-    controlPanel.style.right = "auto";
-  });
-
-  document.addEventListener("mouseup", () => {
-    if (isDragging) {
-      isDragging = false;
-      controlPanel.style.opacity = "1";
-      controlPanel.style.transition = "opacity 0.2s";
-    }
-  });
-
-  window.addEventListener("beforeunload", () => {
-    if (controlPanel.style.left) {
-      GM_setValue("panelPosition", {
-        left: controlPanel.style.left,
-        top: controlPanel.style.top,
-      });
-    }
-  });
-
-  const savedPosition = GM_getValue<{ left: string; top: string } | null>(
-    "panelPosition",
-    null
-  );
-  if (savedPosition) {
-    controlPanel.style.left = savedPosition.left;
-    controlPanel.style.top = savedPosition.top;
-    controlPanel.style.right = "auto";
-  }
-
-  // 标题
-  const title = document.createElement("h3");
-  title.textContent = "MAA Copilot Plus";
-  Object.assign(title.style, { margin: "0 0 10px 0", cursor: "move" });
-
-  // 导入按钮
-  const buttonContainer = document.createElement("div");
-  buttonContainer.style.marginBottom = "10px";
-  const importButton = document.createElement("button");
-  importButton.textContent = "导入角色列表";
-  importButton.onclick = openImportDialog;
-  buttonContainer.appendChild(importButton);
-
-  // 筛选开关
-  const toggleContainer = document.createElement("div");
-  Object.assign(toggleContainer.style, {
-    display: "flex",
-    alignItems: "center",
-    marginBottom: "10px",
-  });
-  const toggleLabel = document.createElement("label");
-  Object.assign(toggleLabel.style, {
-    display: "flex",
-    alignItems: "center",
-    cursor: "pointer",
-  });
-  const toggleInput = document.createElement("input");
-  toggleInput.type = "checkbox";
-  toggleInput.checked = filterEnabled;
-  toggleInput.style.margin = "0 5px 0 0";
-  toggleInput.onchange = () => {
-    filterEnabled = toggleInput.checked;
-    GM_setValue("filterEnabled", filterEnabled);
-    updateStatus();
-    if (confirm("筛选设置已更改，需要刷新页面才能生效。是否立即刷新？"))
-      location.reload();
-  };
-  const toggleText = document.createElement("span");
-  toggleText.textContent = "启用筛选";
-  toggleLabel.append(toggleInput, toggleText);
-  toggleContainer.appendChild(toggleLabel);
-
-  // 允许缺少一个干员
-  const missingContainer = document.createElement("div");
-  Object.assign(missingContainer.style, {
-    display: "flex",
-    alignItems: "center",
-    marginBottom: "10px",
-  });
-  const missingLabel = document.createElement("label");
-  Object.assign(missingLabel.style, {
-    display: "flex",
-    alignItems: "center",
-    cursor: "pointer",
-  });
-  const missingInput = document.createElement("input");
-  missingInput.type = "checkbox";
-  missingInput.checked = allowOneMissing;
-  missingInput.style.margin = "0 5px 0 0";
-  missingInput.onchange = () => {
-    allowOneMissing = missingInput.checked;
-    GM_setValue("allowOneMissing", allowOneMissing);
-    if (confirm("筛选设置已更改，需要刷新页面才能生效。是否立即刷新？"))
-      location.reload();
-  };
-  const missingText = document.createElement("span");
-  missingText.textContent = "允许缺少一个干员";
-  missingLabel.append(missingInput, missingText);
-  missingContainer.appendChild(missingLabel);
-
-  // 状态
-  const status = document.createElement("div");
-  status.id = "maa-status";
-  status.style.fontSize = "12px";
-
-  controlPanel.append(
-    title,
-    buttonContainer,
-    toggleContainer,
-    missingContainer,
-    status
-  );
-  document.body.appendChild(controlPanel);
-  updateStatus();
+  return btn;
 }
 
-function updateStatus(filteredCount?: number) {
+// 查找导航栏并注入控件
+function injectToNavbar() {
+  // 查找导航栏容器
+  const navbar = document.querySelector(".bp4-navbar");
+  if (!navbar) {
+    // 可能是未加载完，或者是 iframe 等情况
+    setTimeout(injectToNavbar, 1000);
+    return;
+  }
+
+  // 查找右侧按钮区域 (Login, etc.)
+  // DOM: <div class="flex md:gap-4 gap-3">
+  const rightContainer = navbar.querySelector(".flex.md\\:gap-4");
+  if (!rightContainer) {
+    setTimeout(injectToNavbar, 1000);
+    return;
+  }
+
+  // 防止重复注入
+  if (document.getElementById("maa-copilot-plus")) return;
+
+  // 创建控件容器
+  const container = document.createElement("div");
+  container.id = "maa-copilot-plus";
+  // 使用 Tailwind 样式保持一致性 (如果网站有 loading tailwind)
+  // 或者直接写 atomic css
+  // DOM 中用的是 flex items-center, gap 也是 tailwind
+  container.className = "flex items-center gap-2 mr-2";
+
+  // 筛选开关按钮
+  const filterBtn = createNavButton(
+    filterEnabled ? "筛选中" : "筛选",
+    filterEnabled,
+    () => {
+      filterEnabled = !filterEnabled;
+      GM_setValue("filterEnabled", filterEnabled);
+
+      // 更新按钮状态
+      filterBtn.classList.toggle("bp4-active", filterEnabled);
+      const textSpan = filterBtn.querySelector(".bp4-button-text");
+      if (textSpan) textSpan.textContent = filterEnabled ? "筛选中" : "筛选";
+
+      updateNavStatus();
+      if (confirm("筛选设置已更改，需要刷新页面才能生效。是否立即刷新？")) {
+        location.reload();
+      }
+    },
+    "开启/关闭自动筛选"
+  );
+
+  // ±1 开关按钮
+  const missingBtn = createNavButton(
+    "允许缺1",
+    allowOneMissing,
+    () => {
+      allowOneMissing = !allowOneMissing;
+      GM_setValue("allowOneMissing", allowOneMissing);
+
+      missingBtn.classList.toggle("bp4-active", allowOneMissing);
+      // const textSpan = missingBtn.querySelector(".bp4-button-text");
+      // if (textSpan) textSpan.textContent = allowOneMissing ? "±1 ✓" : "±1";
+
+      if (confirm("筛选设置已更改，需要刷新页面才能生效。是否立即刷新？")) {
+        location.reload();
+      }
+    },
+    "允许缺少一个干员"
+  );
+
+  // 导入按钮
+  const importBtn = createNavButton(
+    "导入角色",
+    false,
+    openImportDialog,
+    "导入角色列表"
+  );
+
+  // 状态显示
+  const status = document.createElement("span");
+  status.id = "maa-status";
+  status.className =
+    "text-sm text-zinc-600 dark:text-slate-100 ml-2 select-none";
+  // 复用网站的 text color classes
+
+  container.append(filterBtn, missingBtn, importBtn, status);
+
+  // 插入到右侧容器的最前面
+  rightContainer.insertBefore(container, rightContainer.firstChild);
+
+  // 更新状态
+  updateNavStatus();
+}
+
+function updateNavStatus() {
   const status = document.getElementById("maa-status");
   if (!status) return;
 
-  let text = `已导入 ${myOperators.length} 个角色`;
-  if (filterEnabled) {
-    text +=
-      filteredCount !== undefined
-        ? `，筛选掉 ${filteredCount} 个`
-        : " (筛选已启用)";
-  } else {
-    text += " (筛选已禁用)";
-  }
+  let text = `${myOperators.length}个角色`;
   status.textContent = text;
-  status.style.color = filterEnabled ? "green" : "gray";
+}
+
+// 兼容旧版 updateStatus
+function updateStatus() {
+  updateNavStatus();
 }
 
 function openImportDialog() {
@@ -376,53 +332,66 @@ function openImportDialog() {
     display: "flex",
     justifyContent: "center",
     alignItems: "center",
-    zIndex: "10000",
+    zIndex: "5000",
   });
 
   const dialog = document.createElement("div");
+  // 模仿 bp4-card 或 dialog
+  dialog.className = "bp4-card bp4-elevation-3";
   Object.assign(dialog.style, {
-    backgroundColor: "white",
+    backgroundColor: "var(--bp4-load-app-background-color, #fff)", // 尝试使用变量
+    minWidth: "400px",
     padding: "20px",
-    borderRadius: "5px",
-    width: "80%",
-    maxWidth: "600px",
-    maxHeight: "80%",
-    overflow: "auto",
+    borderRadius: "4px",
   });
+  // 如果没有变量，fallback 到 inline styles
+  if (document.documentElement.classList.contains("dark")) {
+    dialog.style.backgroundColor = "#2f3946";
+    dialog.style.color = "#fff";
+  } else {
+    dialog.style.backgroundColor = "#fff";
+    dialog.style.color = "#000";
+  }
 
   const title = document.createElement("h3");
+  title.className = "bp4-heading";
   title.textContent = "导入角色列表";
   title.style.marginTop = "0";
 
   const textarea = document.createElement("textarea");
+  textarea.className = "bp4-input bp4-large";
   Object.assign(textarea.style, {
     width: "100%",
     height: "200px",
     marginBottom: "10px",
+    resize: "vertical",
   });
   textarea.placeholder = "粘贴角色列表 JSON 数据...";
+  textarea.value = JSON.stringify(myOperators, null, 2);
 
   const buttonContainer = document.createElement("div");
+  buttonContainer.className = "flex justify-end gap-2";
   Object.assign(buttonContainer.style, {
     display: "flex",
     justifyContent: "flex-end",
+    gap: "10px",
   });
 
   const cancelButton = document.createElement("button");
+  cancelButton.className = "bp4-button";
   cancelButton.textContent = "取消";
-  cancelButton.style.marginRight = "10px";
   cancelButton.onclick = () => document.body.removeChild(modal);
 
-  const importBtn = document.createElement("button");
-  importBtn.textContent = "导入";
-  importBtn.onclick = () => {
+  const confirmBtn = document.createElement("button");
+  confirmBtn.className = "bp4-button bp4-intent-primary";
+  confirmBtn.textContent = "导入";
+  confirmBtn.onclick = () => {
     try {
       const data = JSON.parse(textarea.value);
       if (!Array.isArray(data)) {
         alert("无效的数据格式");
         return;
       }
-
       myOperators = data
         .filter((op: any) => op.own)
         .map((op: any) => ({
@@ -442,7 +411,7 @@ function openImportDialog() {
     }
   };
 
-  buttonContainer.append(cancelButton, importBtn);
+  buttonContainer.append(cancelButton, confirmBtn);
   dialog.append(title, textarea, buttonContainer);
   modal.appendChild(dialog);
   document.body.appendChild(modal);
@@ -451,13 +420,16 @@ function openImportDialog() {
 // ============ 初始化 ============
 
 function initUI() {
-  if (document.body) {
-    createUI();
-  } else {
-    document.addEventListener("DOMContentLoaded", () => {
-      createUI();
-    });
-  }
+  injectToNavbar();
+  // 监听 URL 变化 (SPA 路由切换可能导致导航栏重建?)
+  // Blueprint 导航栏是否会因为路由切换而重绘？
+  // 加上 observer 比较保险
+  const observer = new MutationObserver(() => {
+    if (!document.getElementById("maa-copilot-plus")) {
+      injectToNavbar();
+    }
+  });
+  observer.observe(document.body, { childList: true, subtree: true });
 }
 
 initUI();
