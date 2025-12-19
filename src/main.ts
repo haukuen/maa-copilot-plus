@@ -166,14 +166,10 @@ function checkCopilotItem(item: CopilotItem): {
 } {
   try {
     const content: CopilotContent = JSON.parse(item.content);
-    let missingCount = 0;
-
-    content.opers?.forEach((oper) => {
-      if (!checkOperator(oper)) missingCount++;
-    });
-    content.groups?.forEach((group) => {
-      if (!checkGroup(group)) missingCount++;
-    });
+    
+    const missingOpers = content.opers?.filter((oper) => !checkOperator(oper)).length ?? 0;
+    const missingGroups = content.groups?.filter((group) => !checkGroup(group)).length ?? 0;
+    const missingCount = missingOpers + missingGroups;
 
     return {
       pass: allowOneMissing ? missingCount <= 1 : missingCount === 0,
@@ -192,7 +188,7 @@ function filterResponse(response: CopilotQueryResponse): CopilotQueryResponse {
   const filteredData = originalData.filter(
     (item) => checkCopilotItem(item).pass
   );
-  updateStatus();
+  updateNavStatus();
 
   return { ...response, data: { ...response.data, data: filteredData } };
 }
@@ -205,6 +201,13 @@ declare global {
 }
 
 // ============ UI ============
+
+// 提示刷新页面并执行
+function confirmAndReload(message: string): void {
+  if (confirm(message + "需要刷新页面才能生效。是否立即刷新？")) {
+    location.reload();
+  }
+}
 
 // 创建导航栏按钮
 function createNavButton(
@@ -272,9 +275,7 @@ function injectToNavbar() {
       if (textSpan) textSpan.textContent = filterEnabled ? "筛选中" : "筛选";
 
       updateNavStatus();
-      if (confirm("筛选设置已更改，需要刷新页面才能生效。是否立即刷新？")) {
-        location.reload();
-      }
+      confirmAndReload("筛选设置已更改，");
     },
     "开启/关闭自动筛选"
   );
@@ -288,12 +289,7 @@ function injectToNavbar() {
       GM_setValue("allowOneMissing", allowOneMissing);
 
       missingBtn.classList.toggle("bp4-active", allowOneMissing);
-      // const textSpan = missingBtn.querySelector(".bp4-button-text");
-      // if (textSpan) textSpan.textContent = allowOneMissing ? "±1 ✓" : "±1";
-
-      if (confirm("筛选设置已更改，需要刷新页面才能生效。是否立即刷新？")) {
-        location.reload();
-      }
+      confirmAndReload("筛选设置已更改，");
     },
     "允许缺少一个干员"
   );
@@ -325,17 +321,12 @@ function injectToNavbar() {
 function updateNavStatus() {
   const status = document.getElementById("maa-status");
   if (!status) return;
-
-  let text = `${myOperators.length}个干员`;
-  status.textContent = text;
-}
-
-// 兼容旧版 updateStatus
-function updateStatus() {
-  updateNavStatus();
+  status.textContent = `${myOperators.length}个干员`;
 }
 
 function openImportDialog() {
+  const closeModal = () => document.body.removeChild(modal);
+  
   const modal = document.createElement("div");
   Object.assign(modal.style, {
     position: "fixed",
@@ -349,6 +340,11 @@ function openImportDialog() {
     alignItems: "center",
     zIndex: "5000",
   });
+  
+  // 点击遮罩层关闭弹窗
+  modal.onclick = (e) => {
+    if (e.target === modal) closeModal();
+  };
 
   const dialog = document.createElement("div");
   // 模仿 bp4-card 或 dialog
@@ -395,7 +391,7 @@ function openImportDialog() {
   const cancelButton = document.createElement("button");
   cancelButton.className = "bp4-button";
   cancelButton.textContent = "取消";
-  cancelButton.onclick = () => document.body.removeChild(modal);
+  cancelButton.onclick = closeModal;
 
   const confirmBtn = document.createElement("button");
   confirmBtn.className = "bp4-button bp4-intent-primary";
@@ -419,10 +415,9 @@ function openImportDialog() {
       // 更新 Map
       operatorMap = new Map(myOperators.map((op) => [op.name, op]));
       GM_setValue("myOperators", myOperators);
-      updateStatus();
-      document.body.removeChild(modal);
-      if (confirm("干员列表已导入，需要刷新页面才能生效。是否立即刷新？"))
-        location.reload();
+      updateNavStatus();
+      closeModal();
+      confirmAndReload("干员列表已导入，");
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
       alert("解析失败: " + message);
