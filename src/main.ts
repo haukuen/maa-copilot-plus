@@ -38,19 +38,19 @@ pageWindow.fetch = async function (
 pageWindow.XMLHttpRequest.prototype.open = function (
   method: string,
   url: string | URL,
-  ...args: any[]
+  async?: boolean,
+  username?: string | null,
+  password?: string | null
 ) {
-  (this as any)._url = url.toString();
-  (this as any)._isCopilotQuery = (this as any)._url.includes(
-    COPILOT_QUERY_URL
-  );
-  return _originalXHROpen.apply(this, [method, url, ...args] as any);
+  this._url = url.toString();
+  this._isCopilotQuery = this._url.includes(COPILOT_QUERY_URL);
+  return _originalXHROpen.call(this, method, url, async ?? true, username, password);
 };
 
 pageWindow.XMLHttpRequest.prototype.send = function (
   body?: Document | XMLHttpRequestBodyInit | null
 ) {
-  if ((this as any)._isCopilotQuery) {
+  if (this._isCopilotQuery) {
     const xhr = this;
     const originalOnReadyStateChange = xhr.onreadystatechange;
 
@@ -126,16 +126,30 @@ interface CopilotQueryResponse {
   };
 }
 
+// 原始干员数据类型（导入时使用）
+interface RawOperator {
+  name: string;
+  elite: number;
+  level: number;
+  rarity: number;
+  own?: boolean;
+}
+
 // ============ 状态 ============
 
 let myOperators: Operator[] = GM_getValue("myOperators", []);
 let filterEnabled = GM_getValue("filterEnabled", true);
 let allowOneMissing = GM_getValue("allowOneMissing", false);
 
+// 使用 Map 加速干员查找（O(1) 复杂度）
+let operatorMap: Map<string, Operator> = new Map(
+  myOperators.map((op) => [op.name, op])
+);
+
 // ============ 筛选逻辑 ============
 
 function checkOperator(oper: CopilotOper): boolean {
-  const myOp = myOperators.find((op) => op.name === oper.name);
+  const myOp = operatorMap.get(oper.name);
   if (!myOp) return false;
   if (myOp.rarity === 6 && myOp.elite < 2) return false; // 六星必须精二
   return (oper.skill || 1) <= myOp.maxSkill;
@@ -165,7 +179,8 @@ function checkCopilotItem(item: CopilotItem): {
       pass: allowOneMissing ? missingCount <= 1 : missingCount === 0,
       missingCount,
     };
-  } catch {
+  } catch (e: unknown) {
+    console.warn("解析作业内容失败:", e);
     return { pass: true, missingCount: 0 };
   }
 }
@@ -177,7 +192,7 @@ function filterResponse(response: CopilotQueryResponse): CopilotQueryResponse {
   const filteredData = originalData.filter(
     (item) => checkCopilotItem(item).pass
   );
-  setTimeout(() => updateStatus(), 100);
+  updateStatus();
 
   return { ...response, data: { ...response.data, data: filteredData } };
 }
@@ -393,21 +408,24 @@ function openImportDialog() {
         return;
       }
       myOperators = data
-        .filter((op: any) => op.own)
-        .map((op: any) => ({
+        .filter((op: RawOperator) => op.own)
+        .map((op: RawOperator): Operator => ({
           name: op.name,
           elite: op.elite,
           level: op.level,
           rarity: op.rarity,
           maxSkill: op.elite === 0 ? 1 : op.elite === 1 ? 2 : 3,
         }));
+      // 更新 Map
+      operatorMap = new Map(myOperators.map((op) => [op.name, op]));
       GM_setValue("myOperators", myOperators);
       updateStatus();
       document.body.removeChild(modal);
       if (confirm("干员列表已导入，需要刷新页面才能生效。是否立即刷新？"))
         location.reload();
-    } catch (e: any) {
-      alert("解析失败: " + e.message);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      alert("解析失败: " + message);
     }
   };
 
@@ -421,9 +439,6 @@ function openImportDialog() {
 
 function initUI() {
   injectToNavbar();
-  // 监听 URL 变化 (SPA 路由切换可能导致导航栏重建?)
-  // Blueprint 导航栏是否会因为路由切换而重绘？
-  // 加上 observer 比较保险
   const observer = new MutationObserver(() => {
     if (!document.getElementById("maa-copilot-plus")) {
       injectToNavbar();
