@@ -140,8 +140,8 @@ interface RawOperator {
 let myOperators: Operator[] = GM_getValue("myOperators", []);
 let filterEnabled = GM_getValue("filterEnabled", true);
 let allowOneMissing = GM_getValue("allowOneMissing", false);
+let requireSixStarElite2 = GM_getValue("requireSixStarElite2", true); // 六星必须精二才算拥有
 
-// 使用 Map 加速干员查找（O(1) 复杂度）
 let operatorMap: Map<string, Operator> = new Map(
   myOperators.map((op) => [op.name, op])
 );
@@ -151,7 +151,7 @@ let operatorMap: Map<string, Operator> = new Map(
 function checkOperator(oper: CopilotOper): boolean {
   const myOp = operatorMap.get(oper.name);
   if (!myOp) return false;
-  if (myOp.rarity === 6 && myOp.elite < 2) return false; // 六星必须精二
+  if (requireSixStarElite2 && myOp.rarity === 6 && myOp.elite < 2) return false;
   return (oper.skill || 1) <= myOp.maxSkill;
 }
 
@@ -202,11 +202,95 @@ declare global {
 
 // ============ UI ============
 
-// 提示刷新页面并执行
-function confirmAndReload(message: string): void {
-  if (confirm(message + "需要刷新页面才能生效。是否立即刷新？")) {
-    location.reload();
+function showToast(
+  message: string,
+  options?: {
+    duration?: number;
+    showReloadButton?: boolean;
   }
+): void {
+  const { duration = 3000, showReloadButton = false } = options || {};
+
+  const existingToast = document.getElementById("maa-toast");
+  if (existingToast) {
+    existingToast.remove();
+  }
+
+  const toast = document.createElement("div");
+  toast.id = "maa-toast";
+  Object.assign(toast.style, {
+    position: "fixed",
+    top: "20px",
+    left: "50%",
+    transform: "translateX(-50%)",
+    backgroundColor: document.documentElement.classList.contains("dark")
+      ? "#394b59"
+      : "#fff",
+    color: document.documentElement.classList.contains("dark") ? "#fff" : "#000",
+    padding: "12px 20px",
+    borderRadius: "6px",
+    boxShadow: "0 4px 12px rgba(0, 0, 0, 0.15)",
+    zIndex: "6000",
+    display: "flex",
+    alignItems: "center",
+    gap: "12px",
+    fontSize: "14px",
+    fontWeight: "500",
+    animation: "maa-toast-in 0.3s ease",
+  });
+
+  // 添加动画样式
+  if (!document.getElementById("maa-toast-style")) {
+    const style = document.createElement("style");
+    style.id = "maa-toast-style";
+    style.textContent = `
+      @keyframes maa-toast-in {
+        from { opacity: 0; transform: translateX(-50%) translateY(-20px); }
+        to { opacity: 1; transform: translateX(-50%) translateY(0); }
+      }
+      @keyframes maa-toast-out {
+        from { opacity: 1; transform: translateX(-50%) translateY(0); }
+        to { opacity: 0; transform: translateX(-50%) translateY(-20px); }
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  const messageSpan = document.createElement("span");
+  messageSpan.textContent = message;
+  toast.appendChild(messageSpan);
+
+  if (showReloadButton) {
+    const reloadBtn = document.createElement("button");
+    reloadBtn.className = "bp4-button bp4-small bp4-intent-primary";
+    reloadBtn.textContent = "刷新页面";
+    reloadBtn.onclick = () => location.reload();
+    toast.appendChild(reloadBtn);
+  }
+
+  const closeBtn = document.createElement("button");
+  closeBtn.className = "bp4-button bp4-small bp4-minimal";
+  closeBtn.innerHTML = "✕";
+  closeBtn.style.marginLeft = "4px";
+  closeBtn.onclick = () => removeToast();
+  toast.appendChild(closeBtn);
+
+  document.body.appendChild(toast);
+
+  const removeToast = () => {
+    toast.style.animation = "maa-toast-out 0.3s ease forwards";
+    setTimeout(() => toast.remove(), 300);
+  };
+
+  // 如果不显示刷新按钮，自动消失
+  if (!showReloadButton && duration > 0) {
+    setTimeout(removeToast, duration);
+  }
+}
+
+// 提示刷新页面
+function showReloadToast(message: string): void {
+  showToast(message + "需要刷新页面才能生效。", { showReloadButton: true });
 }
 
 // 创建导航栏按钮
@@ -275,23 +359,17 @@ function injectToNavbar() {
       if (textSpan) textSpan.textContent = filterEnabled ? "筛选中" : "筛选";
 
       updateNavStatus();
-      confirmAndReload("筛选设置已更改，");
+      showReloadToast("筛选设置已更改，");
     },
     "开启/关闭自动筛选"
   );
 
-  // ±1 开关按钮
-  const missingBtn = createNavButton(
-    "允许缺1",
-    allowOneMissing,
-    () => {
-      allowOneMissing = !allowOneMissing;
-      GM_setValue("allowOneMissing", allowOneMissing);
-
-      missingBtn.classList.toggle("bp4-active", allowOneMissing);
-      confirmAndReload("筛选设置已更改，");
-    },
-    "允许缺少一个干员"
+  // 筛选设置按钮
+  const settingsBtn = createNavButton(
+    "筛选设置",
+    false,
+    openSettingsDialog,
+    "打开筛选设置"
   );
 
   // 导入按钮
@@ -309,7 +387,7 @@ function injectToNavbar() {
     "text-sm text-zinc-600 dark:text-slate-100 ml-2 select-none";
   // 复用网站的 text color classes
 
-  container.append(filterBtn, missingBtn, importBtn, status);
+  container.append(filterBtn, settingsBtn, importBtn, status);
 
   // 插入到右侧容器的最前面
   rightContainer.insertBefore(container, rightContainer.firstChild);
@@ -322,6 +400,137 @@ function updateNavStatus() {
   const status = document.getElementById("maa-status");
   if (!status) return;
   status.textContent = `${myOperators.length}个干员`;
+}
+
+// 创建开关组件
+function createSwitch(
+  label: string,
+  checked: boolean,
+  onChange: (checked: boolean) => void
+): HTMLLabelElement {
+  const labelContainer = document.createElement("label");
+  labelContainer.className = "bp4-control bp4-switch";
+  Object.assign(labelContainer.style, {
+    display: "flex",
+    alignItems: "center",
+    cursor: "pointer",
+    marginBottom: "12px",
+  });
+
+  const input = document.createElement("input");
+  input.type = "checkbox";
+  input.checked = checked;
+  input.onchange = () => onChange(input.checked);
+
+  const indicator = document.createElement("span");
+  indicator.className = "bp4-control-indicator";
+
+  const labelText = document.createElement("span");
+  labelText.textContent = label;
+  labelText.style.fontWeight = "500";
+
+  labelContainer.append(input, indicator, labelText);
+
+  return labelContainer;
+}
+
+// 筛选设置弹窗
+function openSettingsDialog() {
+  const closeModal = () => document.body.removeChild(modal);
+
+  const modal = document.createElement("div");
+  Object.assign(modal.style, {
+    position: "fixed",
+    top: "0",
+    left: "0",
+    width: "100%",
+    height: "100%",
+    backgroundColor: "rgba(0,0,0,0.5)",
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: "5000",
+  });
+
+  // 点击遮罩层关闭弹窗
+  modal.onclick = (e) => {
+    if (e.target === modal) closeModal();
+  };
+
+  const dialog = document.createElement("div");
+  dialog.className = "bp4-card bp4-elevation-3";
+  Object.assign(dialog.style, {
+    backgroundColor: "var(--bp4-load-app-background-color, #fff)",
+    minWidth: "300px",
+    padding: "20px",
+    borderRadius: "4px",
+  });
+  // 暗色模式适配
+  if (document.documentElement.classList.contains("dark")) {
+    dialog.style.backgroundColor = "#2f3946";
+    dialog.style.color = "#fff";
+  } else {
+    dialog.style.backgroundColor = "#fff";
+    dialog.style.color = "#000";
+  }
+
+  const title = document.createElement("h3");
+  title.className = "bp4-heading";
+  title.textContent = "筛选设置";
+  title.style.marginTop = "0";
+  title.style.marginBottom = "16px";
+
+  // 开关容器
+  const settingsContainer = document.createElement("div");
+  settingsContainer.style.marginBottom = "16px";
+
+  // 开关1: 允许缺一
+  const allowMissingSwitch = createSwitch(
+    "允许缺一",
+    allowOneMissing,
+    (checked) => {
+      allowOneMissing = checked;
+      GM_setValue("allowOneMissing", allowOneMissing);
+    }
+  );
+
+  // 开关2: 六星必须精二
+  const sixStarSwitch = createSwitch(
+    "六星必须精二",
+    requireSixStarElite2,
+    (checked) => {
+      requireSixStarElite2 = checked;
+      GM_setValue("requireSixStarElite2", requireSixStarElite2);
+    }
+  );
+
+  settingsContainer.append(allowMissingSwitch, sixStarSwitch);
+
+  // 按钮容器
+  const buttonContainer = document.createElement("div");
+  Object.assign(buttonContainer.style, {
+    display: "flex",
+    justifyContent: "flex-end",
+    gap: "10px",
+  });
+
+  const cancelButton = document.createElement("button");
+  cancelButton.className = "bp4-button";
+  cancelButton.textContent = "取消";
+  cancelButton.onclick = closeModal;
+
+  const saveBtn = document.createElement("button");
+  saveBtn.className = "bp4-button bp4-intent-primary";
+  saveBtn.textContent = "保存";
+  saveBtn.onclick = () => {
+    closeModal();
+    showReloadToast("筛选设置已更改，");
+  };
+
+  buttonContainer.append(cancelButton, saveBtn);
+  dialog.append(title, settingsContainer, buttonContainer);
+  modal.appendChild(dialog);
+  document.body.appendChild(modal);
 }
 
 function openImportDialog() {
@@ -417,7 +626,7 @@ function openImportDialog() {
       GM_setValue("myOperators", myOperators);
       updateNavStatus();
       closeModal();
-      confirmAndReload("干员列表已导入，");
+      showReloadToast("干员列表已导入，");
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
       alert("解析失败: " + message);
